@@ -1,20 +1,61 @@
 # forma-ui
 
+> **Work in progress.** This is a functional but early-stage template. Notable missing features: integrated live reload, a proper CLI, and broader backend support. Some todos are noted along the way.
+
 A template for building schema-driven UI applications backed by a PostgreSQL data model.
 
-## The idea
+## Rationale
 
-1. **Design your data model in PostgreSQL** — schema and queries are first-class source artifacts, not generated boilerplate.
-2. **Design your static routes** — HTML pages live as templates in a workspace folder and are compiled into a flat, serveable site.
-3. **Hydrate with whatever you like** — the compiled output is plain HTML. Wire it up with _hyperscript, React, Svelte, HTMX, or anything else. The template does not care.
+`forma-ui` proposes a declarative, data-model-driven approach for building data-intensive UI applications.
 
-The result is a clean separation: your data model drives what operations exist, your HTML templates drive what pages exist, and your choice of frontend library drives how the UI behaves. Nothing is coupled.
+Data models are expressed in PostgreSQL SQL and compiled into clients the front-end can consume to interact with the database.
+
+1. **Your data model lives in SQL.** Schema and queries are first-class source artifacts and are compiled into a typed, named query client available on `window.PGXQueries`.
+2. **Your pages live in HTML templates.** The website is built from templates and served as a static artifact that can be easily hydrated on the client.
+3. **You hydrate with whatever you like.** The compiled output is plain HTML. Wire it up with React, Reagent/Re-frame, Svelte, _hyperscript, or web components — all via the native `document` event system.
+
+The result: the data model drives what operations exist, the HTML drives what pages exist, and your frontend library drives how the UI behaves.
 
 ---
 
 ## Architecture
 
-The two compilers are independent. Each takes a `--src <workspace>` root and an `--out <output-dir>`, and reads only the subfolder it cares about:
+`forma-ui` is built around a single concept: the **workspace**. A workspace is a folder containing your source artifacts — SQL queries and HTML templates. Two independent compilers read from it and write a deployable static site to an output directory. The runtime SQL client (PGlite, running in a Web Worker) is built separately and placed alongside the compiled output.
+
+### Workspace
+
+A workspace contains two subfolders and one convention:
+
+- `sql/` — your data model: migrations and named queries, one file per operation.
+- `html/` — your pages: templates that may reference reusable fragments.
+- `partial/` — shared fragments (navigation, script tags, head metadata). Resolved relative to the workspace root, so they can be referenced from any page.
+
+The suggested layout:
+
+```
+workspace/
+├── sql/
+│   ├── migrations/        # schema — CREATE TABLE, seed data
+│   └── {entity}/          # named queries per entity
+│       ├── list.sql
+│       ├── get.sql
+│       ├── create.sql
+│       ├── update.sql
+│       └── delete.sql
+├── html/
+│   └── {page}/
+│       └── index.html
+└── partial/
+    └── *.html
+```
+
+The canonical examples are in `test-plan/` — each subdirectory (`test_1/`, `test_2/`, `test_3/`) is a self-contained workspace compiled and verified independently by the test suite.
+
+> todo: add missing tests for test_3
+
+### Compilers
+
+Each compiler takes `--src <workspace>` and `--out <output-dir>` and reads only the subfolder it cares about. They are fully independent and can be pointed at the same workspace or at separate folders.
 
 ```
 compile-queries --src <workspace> --out <out>
@@ -34,29 +75,6 @@ esbuild src/worker.js src/main.js
            out/assets/main.js
 ```
 
-You can point both compilers at the same workspace (if it contains both `sql/` and `html/`) or at separate folders — they do not know about each other. The suggested workspace layout is:
-
-```
-workspace/
-├── sql/
-│   ├── migrations/        # schema — CREATE TABLE, seed data
-│   └── {entity}/          # named queries per entity
-│       ├── list.sql
-│       ├── get.sql
-│       ├── create.sql
-│       ├── update.sql
-│       └── delete.sql
-├── html/
-│   └── {page}/
-│       └── index.html     # page templates
-└── partial/
-    └── *.html             # reusable fragments (resolved relative to workspace root)
-```
-
-The canonical examples of this layout are in `test-plan/` — each subdirectory (`test_1/`, `test_2/`) is a self-contained workspace compiled and verified independently by the test suite.
-
-Serve `out/` with any static file server. No backend required.
-
 ---
 
 ## SQL compilation
@@ -64,28 +82,28 @@ Serve `out/` with any static file server. No backend required.
 Each `.sql` file in `workspace/sql/` becomes a named query. The key mirrors the file path without the extension:
 
 ```
-sql/users/create.sql  →  "users/create"
-sql/users/list.sql    →  "users/list"
+sql/agents/create.sql  →  "agents/create"
+sql/agents/list.sql    →  "agents/list"
 ```
 
-Parameters are declared on the first line of the file:
+Parameters are declared on the first line:
 
 ```sql
--- :params id name email
-INSERT INTO users (id, name, email)
-VALUES ($1, $2, $3)
+-- :params id name version tags description icon prompt
+INSERT INTO agents (id, name, version, tags, description, icon, prompt)
+VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
 RETURNING *;
 ```
 
-Files without a parameter declaration take no arguments.
+Files without a parameter declaration take no arguments. All queries are compiled into `out/js/queries.js` as `window.PGXQueries` — a plain JSON object loaded as a script tag. 
 
-All queries are compiled into `out/js/queries.js` as `window.PGXQueries` — a plain JSON object loaded as a script tag. No runtime SQL parsing, no ORM.
+> todo: sanitize input
 
 ---
 
 ## HTML compilation
 
-Pages live in `workspace/html/`. Shared fragments (head, navigation, scripts) are declared as partials:
+Pages live in `workspace/html/`. Shared fragments are declared as partials:
 
 ```html
 <head>
@@ -97,7 +115,10 @@ Pages live in `workspace/html/`. Shared fragments (head, navigation, scripts) ar
 </body>
 ```
 
-`compile-site` resolves every `<meta name="partial">` directive inline and writes flat `.html` files to the output directory, preserving the folder structure. The compiled pages have no dependencies on the build system at runtime.
+> todo: partials must be able to receive inputs at compile time 
+> todo: inputs can be inlined or configured
+
+`compile-site` resolves every `<meta name="partial">` directive inline and writes flat `.html` files to the output directory, preserving the folder structure. The compiled pages have no runtime dependency on the build system.
 
 ---
 
@@ -113,38 +134,113 @@ await PGXQueries.init({ dataDir: 'idb://my-app' }, async (db) => {
 });
 ```
 
+> todo: the template shall provide the primitive or a protocol for
+>       versioning and migrating the schema preserving client's data 
+
 **Execute** any named query by key, passing parameters by name:
 
 ```js
-const list   = await PGXQueries.execute('users/list');
-const user   = await PGXQueries.execute('users/get',    { id: '42' });
-const result = await PGXQueries.execute('users/create', { id: '42', name: 'Alice', email: 'alice@example.com' });
+const list   = await PGXQueries.execute('agents/list');
+const agent  = await PGXQueries.execute('agents/get',    { id: 'agt-001' });
+const result = await PGXQueries.execute('agents/create', {
+  id: 'agt-003', name: 'Planner', version: '1.0.0',
+  tags: '["planning"]', description: 'Sequences goals into steps.',
+  icon: 'account_tree', prompt: ''
+});
 ```
 
-Parameter order in the SQL file does not matter — the client maps names to positional `$1 $2 ...` placeholders automatically.
+Parameter order in the SQL file does not matter — the client maps names to positional `$1 $2 …` placeholders automatically.
+
+---
+
+## Example: agents entity
+
+The `test_3` workspace provides a complete working example around an `agents` entity.
+
+**Schema** (`sql/migrations/001_init.sql`):
+
+```sql
+CREATE TABLE agents (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  version     TEXT NOT NULL DEFAULT '1.0.0',
+  tags        JSONB NOT NULL DEFAULT '[]',
+  created     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  description TEXT NOT NULL DEFAULT '',
+  icon        TEXT NOT NULL DEFAULT 'psychology',
+  prompt      TEXT NOT NULL DEFAULT ''
+);
+```
+
+**Queries** (`sql/agents/`): `list`, `get`, `create`, `update`, `delete` — each a standalone `.sql` file, each compiled into a named entry on `window.PGXQueries`.
+
+**Page** (`html/index.html`): initialises the database, runs `agents/list`, and dispatches a `CustomEvent` with the results:
+
+```html
+<script type="module">
+  await PGXQueries.init({ dataDir: 'idb://forma-test-3' }, async (db) => {
+    await db.exec(PGXQueries['migrations/001_init'].sql);
+    const result = await PGXQueries.execute('agents/list');
+    document.dispatchEvent(new CustomEvent('agents-loaded', { detail: result.rows }));
+  });
+</script>
+```
+
+**UI layer:** this example interprets ClojureScript in the browser using [Scittle](https://github.com/babashka/scittle) to render a React application with Reagent and Re-frame. It listens for the `agents-loaded` event and renders the list:
+
+```clojure
+(ns agents
+  (:require [reagent.dom :as rdom]
+            [re-frame.core :as rf]))
+
+(rf/reg-event-db ::set-agents
+  (fn [db [_ agents]] (assoc db ::agents agents)))
+
+(rf/reg-sub ::agents
+  (fn [db _] (get db ::agents [])))
+
+(defn agent-card [{:keys [id name version description tags]}]
+  [:li {:key id}
+   [:strong name] [:span " v" version]
+   [:p description]
+   [:div (for [tag tags] [:span {:key tag} tag])]])
+
+(defn agents-view []
+  (let [agents @(rf/subscribe [::agents])]
+    (if (empty? agents)
+      [:p "Loading…"]
+      [:ul (for [a agents] ^{:key (:id a)} [agent-card a])])))
+
+(.addEventListener js/document "agents-loaded"
+  (fn [e]
+    (rf/dispatch [::set-agents (js->clj (.-detail e) :keywordize-keys true)])))
+
+(rdom/render [agents-view] (.getElementById js/document "app"))
+```
+
+The SQL layer and the UI layer share nothing but a browser event. Swap Reagent for React, Svelte, or anything else — the page and the queries do not change.
+
+> todo: 
+>  - tables and queries should be compiled to json-schema 
+>  - add example json-schema to malli/spec, json-schema to typescript typings 
 
 ---
 
 ## Getting started
 
-Clone or fork this repository, create your workspace folder, and run the build:
-
 ```bash
 yarn install
-yarn build          # compiles plan/ → public/  (default in package.json)
-npx serve public    # serve the output
+# create your workspace (e.g. plan/) with sql/ and html/ subfolders, then:
+yarn build          # compiles plan/ → public/
+npx serve public
 ```
 
-The scripts are not tied to `plan/` — pass any workspace with `--src` and any output directory with `--out`:
+The scripts are not tied to `plan/` — pass any workspace:
 
 ```bash
-# together, from a single workspace
 node scripts/compile-queries.js --src my-workspace --out dist
 node scripts/compile-site.js    --src my-workspace --out dist
-
-# independently, from separate folders
-node scripts/compile-queries.js --src my-sql   --out dist
-node scripts/compile-site.js    --src my-html  --out dist
 ```
 
 ---
@@ -155,7 +251,7 @@ node scripts/compile-site.js    --src my-html  --out dist
 |---|---|
 | `yarn build:js` | Bundle `src/worker.js` and `src/main.js` with esbuild |
 | `yarn copy-assets` | Copy PGlite WASM files to `out/assets/` |
-| `yarn compile-site` | Compile HTML templates (resolve partials) to `out/` |
+| `yarn compile-site` | Compile HTML templates to `out/` |
 | `yarn compile-queries` | Compile SQL files to `out/js/queries.js` |
 | `yarn build` | Run all of the above |
 | `yarn test` | Run Playwright tests |
@@ -164,13 +260,16 @@ node scripts/compile-site.js    --src my-html  --out dist
 
 ## Backend options
 
-This template is a POC backed by **PGlite** — PostgreSQL compiled to WASM, running entirely in the browser and persisting data in IndexedDB. No server required.
+The default backend is **PGlite** — PostgreSQL compiled to WASM, running entirely in the browser and persisting in IndexedDB. No server required.
 
-The same SQL-first approach is designed to extend to real backends without changing the data model or the queries:
+The same SQL-first approach extends to real backends without changing the data model or the queries:
 
-**PostgREST** — expose a real PostgreSQL database as a REST API and replace the PGlite client with HTTP calls, while keeping the same named query conventions. See [postgrest.org](https://postgrest.org).
+**PostgREST** — expose a real PostgreSQL database as a REST API and replace the PGlite client with HTTP calls, keeping the same named query conventions. See [postgrest.org](https://postgrest.org).
 
-**PGlite local-first with sync** — run PGlite in the browser as the local replica and sync it with a real PostgreSQL instance using live queries. PGlite supports this model natively via [ElectricSQL](https://electric-sql.com), enabling offline-capable apps with real-time updates.
+> todo: pgrest client (json-schema to http client)
+> todo: docker-compose with pgrest 
+
+**PGlite local-first with sync** — run PGlite in the browser as a local replica and sync with a real PostgreSQL instance via [ElectricSQL](https://electric-sql.com), enabling offline-capable apps with real-time updates.
 
 The data model you write today is valid in all three cases.
 
@@ -178,7 +277,18 @@ The data model you write today is valid in all three cases.
 
 ## Testing
 
-Tests live in `tests/` and run against `test-public/` — a pre-compiled output used as a stable fixture. The test workspace is in `test-plan/`.
+The project contains a minimal Playwright configuration for getting started.
+
+Tests live in `tests/` and run against `test-public/` — a pre-compiled output used as a stable fixture. The test workspaces are in `test-plan/`.
+
+Each workspace must be compiled into `test-public/` before running the tests. For example, to compile `test_3`:
+
+```bash
+node scripts/compile-site.js    --src test-plan/test_3 --out test-public/test_3
+node scripts/compile-queries.js --src test-plan/test_3 --out test-public/test_3
+```
+
+Then run the full suite:
 
 ```bash
 yarn test
