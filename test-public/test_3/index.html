@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="../test/css/agents.css" />
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.8.31/dist/scittle.js" type="application/javascript"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.8.31/dist/scittle.reagent.js" type="application/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.8.31/dist/scittle.re-frame.js" type="application/javascript"></script>
+
+    <script src="../test/cljs/agents.cljs" type="application/x-scittle"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="./js/queries.js"></script>
+<script src="../test/js/main.js" type="module"></script>
+
+    <script type="module">
+      await PGXQueries.init({ dataDir: 'idb://forma-test-3' }, async (db) => {
+        await db.exec(PGXQueries['migrations/001_init'].sql);
+        const result = await PGXQueries.execute('agents/list');
+        document.dispatchEvent(new CustomEvent('agents-loaded', { detail: result.rows }));
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "new-dashboard",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "copy-assets":     "node scripts/copy-assets.js --out public",
+    "build:js":        "esbuild src/worker.js --bundle --format=esm --outfile=public/assets/worker.js && esbuild src/main.js --bundle --format=esm --outfile=public/assets/main.js",
+    "compile-site":    "node scripts/compile-site.js --src plan --out public",
+    "compile-queries": "node scripts/compile-queries.js --src plan --out public",
+    "build":           "yarn build:js && yarn copy-assets && yarn compile-site && yarn compile-queries",
+    "test":            "playwright test"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.4.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "esbuild":          "^0.28.0"
+  }
+}

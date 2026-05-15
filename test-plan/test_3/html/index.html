@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta name="partial" content="partial/generic_head.html" />
+    <script src="../test/cljs/agents.cljs" type="application/x-scittle"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <meta name="partial" content="partial/generic_body_scripts.html" />
+    <script type="module">
+      await PGXQueries.init({ dataDir: 'idb://forma-test-3' }, async (db) => {
+        await db.exec(PGXQueries['migrations/001_init'].sql);
+        const result = await PGXQueries.execute('agents/list');
+        document.dispatchEvent(new CustomEvent('agents-loaded', { detail: result.rows }));
+      });
+    </script>
+  </body>
+</html>

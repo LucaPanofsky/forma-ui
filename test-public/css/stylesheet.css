@@ -1,0 +1,7 @@
+.must-be-class{
+    border: 1px dashed black;
+    width: 50ch;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}

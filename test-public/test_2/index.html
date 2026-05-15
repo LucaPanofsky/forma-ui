@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  </head>
+  <body>
+    <div>
+      <main>
+        <section>
+          <p>Fixi & hyperscript test</p>
+          <div
+            fx-action="./foo.html"
+            fx-method="get"
+            fx-trigger="click"
+            _="init log 'hello' wait 20ms then send click to me end"
+          >
+            click me!
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="../test/js/fixi.js"></script>
+<script src="../test/js/_hyperscript.min.js"></script>
+<script src="../test/js/fixi_hyperscript.js"></script>
+
+  </body>
+</html>
