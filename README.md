@@ -293,3 +293,66 @@ Then run the full suite:
 ```bash
 yarn test
 ```
+
+## Current Architecture
+
+```mermaid
+flowchart TB
+    subgraph WORKSPACE["Workspace Source"]
+        SQL["sql/<br/>• migrations/<br/>• {entity}/<br/>  - list.sql<br/>  - get.sql<br/>  - create.sql"]
+        HTML["html/<br/>• {page}/<br/>  - index.html"]
+        PARTIAL["partial/<br/>• fragments<br/>• scripts<br/>• head"]
+    end
+
+    subgraph COMPILE["Compilation Step"]
+        Q_COMP["compile-queries<br/>(--src --out)"]
+        S_COMP["compile-site<br/>(--src --out)"]
+        ASSETS["copy-assets<br/>+ esbuild"]
+    end
+
+    subgraph OUTPUT["Compiled Output"]
+        QUERIES_JS["out/js/queries.js<br/>window.PGXQueries"]
+        PAGES["out/**/*.html<br/>(partials inlined)"]
+        WASM["out/assets/<br/>• *.wasm (PGlite)<br/>• worker.js<br/>• main.js"]
+    end
+
+    subgraph BROWSER["Browser Runtime"]
+        WORKER["Web Worker<br/>(PGlite WASM)"]
+        MAIN["Main Thread<br/>(UI Application)"]
+        IDB[(IndexedDB<br/>Persistent Storage)]
+    end
+
+    subgraph FRONTEND["Frontend Layer (Choose One)"]
+        REACT["React"]
+        REAGENT["Reagent/Re-frame"]
+        SVELTE["Svelte"]
+        HYP["_hyperscript"]
+    end
+
+    %% Workspace to Compilation
+    SQL --> Q_COMP
+    HTML --> S_COMP
+    PARTIAL --> S_COMP
+
+    %% Compilation to Output
+    Q_COMP --> QUERIES_JS
+    S_COMP --> PAGES
+    ASSETS --> WASM
+
+    %% Output to Browser
+    QUERIES_JS --> MAIN
+    PAGES --> MAIN
+    WASM --> WORKER
+
+    %% Runtime Communication
+    WORKER <--> MAIN
+    WORKER <--> IDB
+
+    %% UI Event Flow
+    MAIN -- "CustomEvent<br/>(e.g., agents-loaded)" --> FRONTEND
+    FRONTEND -- "DOM rendering" --> MAIN
+
+    %% Query Execution
+    MAIN -- "PGXQueries.execute()" --> WORKER
+```
+
